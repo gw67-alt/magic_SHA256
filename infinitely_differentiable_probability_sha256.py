@@ -251,7 +251,7 @@ def number_guessing_game():
 
         try:
             # Use the number displayed, not necessarily the target number
-            start_num_from_slider = int(round(slider.get()))
+            start_num_from_min_entry = int(round(min_entry.get()))
 
             # Reset stop event and update UI
             game_state["stop_event"].clear()
@@ -260,12 +260,12 @@ def number_guessing_game():
             hash_result_label.config(text="Starting hash search...", foreground="#FFEB3B")
 
             prefix_str = hash_prefix_entry.get()
-            print(f"Starting hash testing from slider value={start_num_from_slider}, prefix length={prefix_str}")
+            print(f"Starting hash testing from slider value={start_num_from_min_entry}, prefix length={prefix_str}")
 
             # Start the hash testing in a separate thread
             game_state["hash_thread"] = threading.Thread(
                 target=run_hash_testing,
-                args=(start_num_from_slider, prefix_str, game_state["stop_event"]),
+                args=(start_num_from_min_entry, prefix_str, game_state["stop_event"]),
                 daemon=True # Allow thread to exit if main program closes
             )
             game_state["hash_thread"].start()
