@@ -251,7 +251,7 @@ def number_guessing_game():
 
         try:
             # Use the number displayed, not necessarily the target number
-            start_num_from_min_entry = int(round(min_entry.get()))
+            start_num_from_min_entry = int(min_entry.get())
 
             # Reset stop event and update UI
             game_state["stop_event"].clear()
