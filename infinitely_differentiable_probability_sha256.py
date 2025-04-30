@@ -260,7 +260,7 @@ def number_guessing_game():
             hash_result_label.config(text="Starting hash search...", foreground="#FFEB3B")
 
             prefix_str = hash_prefix_entry.get()
-            print(f"Starting hash testing from slider value={start_num_from_min_entry}, prefix length={prefix_str}")
+            print(f"Starting hash testing from min value={start_num_from_min_entry}, prefix length={prefix_str}")
 
             # Start the hash testing in a separate thread
             game_state["hash_thread"] = threading.Thread(
