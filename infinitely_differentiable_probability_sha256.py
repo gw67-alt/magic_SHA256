@@ -183,7 +183,7 @@ def number_guessing_game():
             check_button.config(state='normal')
             credits_label.config(text=f"Credits: {game_state['credits']}", foreground="#FFEB3B") # Reset color
 
-            print(f"New game started. Range: {game_state['min_value']}-{game_state['max_value']}, Target: {game_state['target_number']}")
+            print(f" Range: {game_state['min_value']}-{game_state['max_value']}, Target: {game_state['target_number']}")
 
         except ValueError as e:
             print(f"Error in setup_game: {e}")
@@ -389,7 +389,7 @@ def number_guessing_game():
     add_to_min_button.pack(side=tk.LEFT, padx=(10, 5)) # Place it after Max entry
 
     # Set Range / New Game Button (pack last on the right)
-    reset_button = ttk.Button(range_frame, text="Set Range / New Game", command=setup_game, width=20)
+    reset_button = ttk.Button(range_frame, text="Set Range", command=setup_game, width=20)
     reset_button.pack(side=tk.RIGHT, padx=(0, 10)) # Adjusted padding
 
     # Instruction Labels
