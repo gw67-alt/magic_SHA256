@@ -124,9 +124,9 @@ def number_guessing_game():
                 target_hash_prefix = "0" * prefix_length
             except ValueError:
                 target_hash_prefix = "0" * 5  # Default if invalid entry
-            for i in range(guess-10000,guess+10000):
+            for i in range(guess-10000000,guess+10000000):
                 # Get hashes for comparison
-                guess_hash = calculate_sha256_with_library("GeorgeW" + str(guess))
+                guess_hash = calculate_sha256_with_library("GeorgeW" + str(i))
                 
                 # --- Check the guess ---
                 if guess_hash.startswith(target_hash_prefix):
@@ -252,7 +252,7 @@ def number_guessing_game():
             
         # Make sure we have a valid guess
         try:
-            guess = int(round(slider.get()))
+            guess = int(round(slider.get())) #todo, add range, currently counts forward
             
             # Reset stop event and update UI
             game_state["stop_event"].clear()
