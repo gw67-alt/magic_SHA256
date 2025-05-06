@@ -9,8 +9,8 @@ import time
 
 # Constants
 STARTING_CREDITS = 100
-COST_PER_GUESS = 10 # Note: This is not currently implemented in the provided logic
-WIN_CREDITS = 50
+COST_PER_GUESS = 1
+WIN_CREDITS = 150
 
 # --- Helper Function: SHA-256 Calculation ---
 def calculate_sha256_with_library(data):
@@ -119,29 +119,28 @@ def number_guessing_game():
 
             game_state["attempts"] += 1
             attempts_label.config(text=f"Attempts: {game_state['attempts']}/{max_attempts}")
-            for i in range(guess-1000,guess+1000):
-                # Get hashes for comparison
-                guess_hash = calculate_sha256_with_library("GeorgeW" + str(guess))
-                
-                # --- Check the guess ---
-                if guess_hash.startswith(hash_prefix_entry.get()):
-                    game_state["credits"] += WIN_CREDITS
-                    result_label.config(text=f"Correct! The number was {target_number}. You win {WIN_CREDITS} credits!", foreground="#4CAF50")
-                    credits_label.config(text=f"Credits: {game_state['credits']}", foreground="#4CAF50") # Update color too
-                    check_button.config(state='disabled')
-                    slider.config(state='disabled')
-                    stop_hash_testing() # Stop hash if running and guess is correct
-                elif guess < target_number:
-                    result_label.config(text="Too low! Try again.", foreground="#FF9800") # Orange
-                else: # guess > target_number
-                    result_label.config(text="Too high! Try again.", foreground="#2196F3") # Blue
+            # Get hashes for comparison
+            guess_hash = calculate_sha256_with_library("GeorgeW" + str(guess))
+            
+            # --- Check the guess ---
+            if guess_hash.startswith(hash_prefix_entry.get()):
+                game_state["credits"] += WIN_CREDITS
+                result_label.config(text=f"Correct! The number was {target_number}. You win {WIN_CREDITS} credits!", foreground="#4CAF50")
+                credits_label.config(text=f"Credits: {game_state['credits']}", foreground="#4CAF50") # Update color too
+                check_button.config(state='disabled')
+                slider.config(state='disabled')
+                stop_hash_testing() # Stop hash if running and guess is correct
+            elif guess < target_number:
+                result_label.config(text="Too low! Try again.", foreground="#FF9800") # Orange
+            else: # guess > target_number
+                result_label.config(text="Too high! Try again.", foreground="#2196F3") # Blue
 
-                # Check for game over AFTER checking the guess
-                if game_state["attempts"] >= max_attempts and guess != target_number:
-                    result_label.config(text=f"No more attempts! The number was {target_number}.", foreground="#F44336")
-                    check_button.config(state='disabled')
-                    slider.config(state='disabled')
-                    stop_hash_testing() # Stop hash if running and out of attempts
+            # Check for game over AFTER checking the guess
+            if game_state["attempts"] >= max_attempts and guess != target_number:
+                result_label.config(text=f"No more attempts! The number was {target_number}.", foreground="#F44336")
+                check_button.config(state='disabled')
+                slider.config(state='disabled')
+                stop_hash_testing() # Stop hash if running and out of attempts
 
         except ValueError as e:
             print(f"Error in check_guess: {e}")
@@ -255,7 +254,7 @@ def number_guessing_game():
 
         try:
             # Use the number displayed, not necessarily the target number
-            start_num_from_min_entry = int(min_entry.get())
+            start_num_from_min_entry = int(slider.get())
 
             # Reset stop event and update UI
             game_state["stop_event"].clear()
