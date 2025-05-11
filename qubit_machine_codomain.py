@@ -7,7 +7,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer, QObject
 from PyQt5.QtGui import QImage, QPixmap
 import pyqtgraph as pg
 from collections import deque
-raw_value_for_guess = 2
+raw_value_for_guess = 0.2
 
 with open("x.txt", 'r', encoding='utf-8') as file:
     # Read, lower, and split robustly
