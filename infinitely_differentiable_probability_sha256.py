@@ -174,14 +174,16 @@ def number_guessing_game():
             hash_button.config(text="Stop Hash Testing")
             hash_result_label.config(text="Starting hash search...", foreground="#FFEB3B")
             prefix_str = hash_prefix_entry.get()
-            print(f"Starting hash testing from value={start_num}, prefix length={prefix_str}")
+            if game_state["credits"] >= 0: # Use elif to avoid overwriting the 'no attempts' message if both happen
+                    
+                print(f"Starting hash testing from value={start_num}, prefix length={prefix_str}")
 
-            game_state["hash_thread"] = threading.Thread(
-                target=run_hash_testing,
-                args=(start_num, prefix_str, game_state["stop_event"]),
-                daemon=True
-            )
-            game_state["hash_thread"].start()
+                game_state["hash_thread"] = threading.Thread(
+                    target=run_hash_testing,
+                    args=(start_num, prefix_str, game_state["stop_event"]),
+                    daemon=True
+                )
+                game_state["hash_thread"].start()
         except ValueError as e:
             print(f"Error in start_hash_testing: {e}")
             hash_result_label.config(text=f"Invalid slider/prefix value: {e}", foreground="#F44336")
@@ -243,6 +245,7 @@ def number_guessing_game():
                 update_hash_ui(f"Prefix '{target_hash_prefix}' not found starting from {start_num}.\nIter: {iterations} | Time: {elapsed_time:.2f}s", "#F44336")
             if not stop_event.is_set():
                 root.after(0, lambda: update_hash_button_state(False))
+            
         except Exception as e:
             error_msg = f"Error in hash thread: {e}"
             print(error_msg)
