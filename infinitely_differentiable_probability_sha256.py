@@ -225,8 +225,10 @@ def number_guessing_game():
                     result_msg = f"FOUND! 'GeorgeW{current_num}' -> {hashed_value}\nIter: {iterations} | Time: {elapsed_time:.2f}s"
                     print(result_msg)
                     update_hash_ui(result_msg, "#4CAF50")
-                    break
+                    game_state["credits"] += WIN_CREDITS
 
+                    break
+                
                 current_time = time.time()
                 if current_time - last_update_time > 0.5 or iterations % 2000 == 0:
                     elapsed_time = current_time - start_time
@@ -235,6 +237,8 @@ def number_guessing_game():
                 current_num += 1
 
             if not found and not stop_event.is_set():
+                game_state["credits"] -= WIN_CREDITS
+
                 elapsed_time = time.time() - start_time
                 update_hash_ui(f"Prefix '{target_hash_prefix}' not found starting from {start_num}.\nIter: {iterations} | Time: {elapsed_time:.2f}s", "#F44336")
             if not stop_event.is_set():
