@@ -8,7 +8,7 @@ import threading
 import time
 
 # Constants
-STARTING_CREDITS = 1000
+STARTING_CREDITS = 8000
 COST_PER_GUESS = 1 # Currently not used, but available
 WIN_CREDITS = 150
 
@@ -48,7 +48,7 @@ def number_guessing_game():
     # Initialize Tkinter window
     root = tk.Tk()
     root.title("Guess the Number Range & Hash Finder")
-    root.geometry("700x600") # Adjusted height for new sliders
+    root.geometry("1200x600") # Adjusted height for new sliders
     root.resizable(False, False)
     root.configure(bg="#2E2E2E")
 
@@ -296,7 +296,7 @@ def number_guessing_game():
     min_guess_label_text = ttk.Label(guess_range_frame, text="Min Guess:", font=('Arial', 11))
     min_guess_label_text.pack(side=tk.LEFT, padx=(0,5))
     guess_slider = ttk.Scale(guess_range_frame, from_=game_state["min_value"], to=game_state["max_value"],
-                                 orient=tk.HORIZONTAL, length=400, command=update_min_guess_label)
+                                 orient=tk.HORIZONTAL, length=4000, command=update_min_guess_label)
     guess_slider.pack(side=tk.LEFT, padx=5)
     guess_val_label = ttk.Label(guess_range_frame, text=str(game_state["min_value"]), font=('Arial', 11, 'bold'), width=4)
     guess_val_label.pack(side=tk.LEFT, padx=(0,15))
