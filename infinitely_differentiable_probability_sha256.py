@@ -8,7 +8,7 @@ import threading
 import time
 
 # Constants
-STARTING_CREDITS = 10000
+STARTING_CREDITS = 1000
 COST_PER_GUESS = 1 # Currently not used, but available
 WIN_CREDITS = 150
 
@@ -127,7 +127,7 @@ def number_guessing_game():
             attempts_label.config(text=f"Attempts: 0/{game_state['max_attempts']}", foreground="#CCCCCC")
             instruction_label.config(text=f"Select a guess range between {game_state['min_value']} and {game_state['max_value']}")
             max_attempts_info_label.config(text=f"({game_state['max_attempts']} optimal attempts for single number)")
-            credits_label.config(text=f"Credits: {game_state['credits']}", foreground="#FFEB3B")
+            credits_label.config(text=f"", foreground="#FFEB3B")
 
             print(f"New game. Overall Range: {game_state['min_value']}-{game_state['max_value']}. Target: {game_state['target_number']}")
 
@@ -168,13 +168,13 @@ def number_guessing_game():
 
         try:
             start_num = int(round(guess_slider.get())) # Use min_guess_slider value
-
-            game_state["stop_event"].clear()
-            game_state["hash_testing"] = True
-            hash_button.config(text="Stop Hash Testing")
-            hash_result_label.config(text="Starting hash search...", foreground="#FFEB3B")
-            prefix_str = hash_prefix_entry.get()
             if game_state["credits"] >= 0: # Use elif to avoid overwriting the 'no attempts' message if both happen
+
+                game_state["stop_event"].clear()
+                game_state["hash_testing"] = True
+                hash_button.config(text="Stop Hash Testing")
+                hash_result_label.config(text="Starting hash search...", foreground="#FFEB3B")
+                prefix_str = hash_prefix_entry.get()
                 game_state["credits"] -= WIN_CREDITS
     
                 print(f"Starting hash testing from value={start_num}, prefix length={prefix_str}")
@@ -262,7 +262,7 @@ def number_guessing_game():
         hash_button.config(text=new_text)
 
     # --- UI Elements ---
-    credits_label = ttk.Label(root, text=f"Credits: {game_state['credits']}", font=("Arial", 12, "bold"), foreground="#FFEB3B")
+    credits_label = ttk.Label(root, text=f"", font=("Arial", 12, "bold"), foreground="#FFEB3B")
     credits_label.pack(pady=(10, 5))
 
     range_frame = ttk.Frame(root, padding="10 5 10 5")
