@@ -8,7 +8,7 @@ import threading
 import time
 
 # Constants
-STARTING_CREDITS = 100000
+STARTING_CREDITS = 10000
 COST_PER_GUESS = 1 # Currently not used, but available
 WIN_CREDITS = 150
 
@@ -175,7 +175,8 @@ def number_guessing_game():
             hash_result_label.config(text="Starting hash search...", foreground="#FFEB3B")
             prefix_str = hash_prefix_entry.get()
             if game_state["credits"] >= 0: # Use elif to avoid overwriting the 'no attempts' message if both happen
-                    
+                game_state["credits"] -= WIN_CREDITS
+    
                 print(f"Starting hash testing from value={start_num}, prefix length={prefix_str}")
 
                 game_state["hash_thread"] = threading.Thread(
