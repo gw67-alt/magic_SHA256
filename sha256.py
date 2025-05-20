@@ -10,7 +10,7 @@ from collections import deque
 import os
 import hashlib
 
-
+PREFIX = "00"
 
 def calculate_sha256_with_library(data):
     """
@@ -36,7 +36,8 @@ def calculate_sha256_with_library(data):
 
         # Get the hexadecimal representation of the hash digest
         hex_digest = sha256_hash.hexdigest()
-        print(data, hex_digest)
+        if hex_digest.startswith(PREFIX):
+            print(data, hex_digest)
         return hex_digest
 
     except TypeError as e:
@@ -651,7 +652,7 @@ class MainWindow(QMainWindow):
             # Win condition: Both cameras are below threshold AND value is 0x55
 
             if cam0_below and cam1_below:
-                if calculate_sha256_with_library("GeorgeW"+str(self.init_count)).startswith("00"): # measure comparisons
+                if calculate_sha256_with_library("GeorgeW"+str(self.init_count)).startswith(PREFIX): # measure comparisons
                     # Win scenario
                     game_state["credits"] += COST_PER_GUESS
                     game_state["wins"] = game_state.get("wins", 0) + 1
