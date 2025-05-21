@@ -10,6 +10,7 @@ import numpy as np
 import pyopencl as cl
 import os
 import hashlib
+from datetime import datetime, timezone
 
 # Set environment variable to avoid spurious OpenCL compiler output
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '0'
@@ -1026,7 +1027,7 @@ class MainWindow(QMainWindow):
             # Win condition: Both cameras are below threshold AND value is 0x55
             if cam0_below and cam1_below:
             
-                if calculate_sha256_with_opencl("GeorgeW", prefix="0000", work_items=100000, nonce_offset=self.init_count): # measure comparisons
+                if calculate_sha256_with_opencl("GeorgeW" + str(datetime.now(timezone.utc)), prefix="00000", work_items=800000, nonce_offset=self.init_count): # measure comparisons
                     # Win scenario
                     game_state["credits"] += COST_PER_GUESS
                     game_state["wins"] = game_state.get("wins", 0) + 1
@@ -1057,7 +1058,7 @@ class MainWindow(QMainWindow):
             
         finally:
             # Move to next data point, wrap around if needed
-            self.init_count = (self.init_count + 100000) % 4294967294
+            self.init_count = (self.init_count + 800000) % 4294967294
             # Update UI with new game state
             self.app_state.update_game_state(game_state)
  
