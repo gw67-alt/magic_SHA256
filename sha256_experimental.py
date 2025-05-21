@@ -10,7 +10,8 @@ import numpy as np
 import pyopencl as cl
 import os
 import hashlib
-
+from datetime import datetime
+_time = str(datetime.utcnow())
 # Set environment variable to avoid spurious OpenCL compiler output
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '0'
 
@@ -59,7 +60,7 @@ CAMERA_0_ID = 0
 CAMERA_1_ID = 1  # Second camera ID (usually 1 for built-in + external)
 
 # --- Hashing Configuration ---
-HASHING_WORK_ITEMS_PER_FRAME = 4000000 # Number of nonces to test per frame/batch
+HASHING_WORK_ITEMS_PER_FRAME = 3000000 # Number of nonces to test per frame/batch
 
 
 class OpenCLSHA256:
@@ -275,7 +276,6 @@ class HashingThread(QThread):
                 self.terminate() # Force terminate if wait fails (use with caution)
                 self.wait() # Wait again after terminate
         print("HashingThread stopped.")
-
 
 # Instantiate OpenCLSHA256 once globally
 sha256_cl_instance = OpenCLSHA256()
@@ -637,10 +637,10 @@ class MainWindow(QMainWindow):
                 'current_value': self.init_count, # Or other relevant data from x.txt if needed
                 'nonce_offset': self.init_count # Pass the nonce offset being used
             }
-            
+            global _time
             self.hashing_thread.enqueue_task(
-                "GeorgeW",                             # This maps to data_val positionally
-                prefix_val="00000000",                       # Corrected keyword
+                "GeorgeW" +_time,                             # This maps to data_val positionally
+                prefix_val="000",                       # Corrected keyword
                 work_items_val=HASHING_WORK_ITEMS_PER_FRAME, # Corrected keyword
                 nonce_offset_val=self.init_count,      # Corrected keyword
                 user_data_val=user_data_for_hash       # Corrected keyword
@@ -652,6 +652,9 @@ class MainWindow(QMainWindow):
             # Advance nonce here if a guess was "attempted" but conditions failed,
             # so it doesn't get stuck on the same nonce if cameras never align.
             self.init_count = (self.init_count + HASHING_WORK_ITEMS_PER_FRAME) % 4294967294
+            if self.init_count + HASHING_WORK_ITEMS_PER_FRAME >= 4294967290:
+                _time = str(datetime.utcnow())
+
             self.app_state.update_game_state(game_state)
 
         # This general log was inside the try block before, moved out for clarity
