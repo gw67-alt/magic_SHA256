@@ -1,1 +1,1 @@
-TODO: fix temporal overload after consecutive updates
+TODO: fix temporal overload after consecutive updates, and timed release after hash success
