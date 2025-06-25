@@ -41,22 +41,21 @@ void ASIC_result_task(void *pvParameters)
 
         //log the ASIC response
         ESP_LOGI(TAG, "Ver: %08" PRIX32 " Nonce %08" PRIX32 " diff %.1f of %ld.", asic_result->rolled_version, asic_result->nonce, nonce_diff, GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->pool_diff);
+		while(stratum_api_v1_message.mining_notification->ntime < stratum_api_v1_message.mining_notification->ntime + stratum_api_v1_message.mining_notification->i){
 
-        if (nonce_diff > GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->pool_diff)
-        {
-
-            STRATUM_V1_submit_share(
-                GLOBAL_STATE->sock,
-                user,
-                GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->jobid,
-                GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->extranonce2,
-                GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->ntime,
-                asic_result->nonce,
-                asic_result->rolled_version ^ GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->version);
-				
-        }
-		while(stratum_api_v1_message.mining_notification->ntime < stratum_api_v1_message.mining_notification->ntime.mining_notification->ntime+stratum_api_v1_message.mining_notification->ntime.mining_notification->i){
-			SYSTEM_notify_new_ntime(GLOBAL_STATE, stratum_api_v1_message.mining_notification->ntime);
+			if (nonce_diff > GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->pool_diff)
+			{
+			
+				STRATUM_V1_submit_share(
+					GLOBAL_STATE->sock,
+					user,
+					GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->jobid,
+					GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->extranonce2,
+					GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->ntime,
+					asic_result->nonce,
+					asic_result->rolled_version ^ GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->version);
+					
+			}
 			SYSTEM_notify_found_nonce(GLOBAL_STATE, nonce_diff, job_id);
 			}
     }
