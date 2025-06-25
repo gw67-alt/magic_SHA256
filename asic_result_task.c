@@ -55,7 +55,7 @@ void ASIC_result_task(void *pvParameters)
                 asic_result->rolled_version ^ GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->version);
 				
         }
-		while(stratum_api_v1_message.mining_notification->ntime+stratum_api_v1_message.mining_notification->i < stratum_api_v1_message.mining_notification->ntime.mining_notification->i){
+		while(stratum_api_v1_message.mining_notification->ntime < stratum_api_v1_message.mining_notification->ntime.mining_notification->ntime+stratum_api_v1_message.mining_notification->ntime.mining_notification->i){
 			SYSTEM_notify_new_ntime(GLOBAL_STATE, stratum_api_v1_message.mining_notification->ntime);
 			SYSTEM_notify_found_nonce(GLOBAL_STATE, nonce_diff, job_id);
 			}
