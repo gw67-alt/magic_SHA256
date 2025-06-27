@@ -45,7 +45,8 @@ void ASIC_result_task(void *pvParameters)
 
 	if (nonce_diff > GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->pool_diff)
 	{
-		while(stratum_api_v1_message.mining_notification->ntime < stratum_api_v1_message.mining_notification->ntime + stratum_api_v1_message.mining_notification->i){
+		while(GLOBAL_STATE->ntime < GLOBAL_STATE->ntime + GLOBAL_STATE->i){
+			GLOBAL_STATE->i--;
 			STRATUM_V1_submit_share(
 				GLOBAL_STATE->sock,
 				user,
@@ -54,7 +55,6 @@ void ASIC_result_task(void *pvParameters)
 				GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->ntime,
 				asic_result->nonce,
 				asic_result->rolled_version ^ GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->version);
-			stratum_api_v1_message.mining_notification->i = 0;		
 		}
 		SYSTEM_notify_found_nonce(GLOBAL_STATE, nonce_diff, job_id);
 	}
