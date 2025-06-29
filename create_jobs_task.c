@@ -24,11 +24,12 @@ void create_jobs_task(void *pvParameters)
 	
 	while (GLOBAL_STATE->stratum_queue.count < 1 && extranonce_2 < UINT_MAX && GLOBAL_STATE->abandon_work == 0)
 		{
+		char *extranonce_2_str = extranonce_2_generate(extranonce_2, GLOBAL_STATE->extranonce_2_len);
+
 		uint32_t extranonce_3 = 0;
 
 		while (extranonce_3 < UINT_MAX)
 			{
-				char *extranonce_2_str = extranonce_2_generate(extranonce_2, GLOBAL_STATE->extranonce_2_len);
 				char *extranonce_3_str = extranonce_2_generate(extranonce_3, GLOBAL_STATE->extranonce_2_len);
 				char *coinbase_tx = construct_coinbase_tx(mining_notification->coinbase_1, mining_notification->coinbase_2, extranonce_3_str, extranonce_2_str);// GLOBAL_STATE->extranonce_str a preprocess hack for the integral anomaly considering a global is used. (it acquires all shares of a job, considering max job constraints...) there is a small chance the shares would condense into the space that were previously allowed via the integral anomaly...
 
