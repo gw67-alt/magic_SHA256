@@ -20,33 +20,36 @@ void create_jobs_task(void *pvParameters)
         mining_notify *mining_notification = (mining_notify *)queue_dequeue(&GLOBAL_STATE->stratum_queue);
         ESP_LOGI(TAG, "New Work Dequeued %s", mining_notification->job_id);
 
-        uint32_t extranonce_2 = 0;
-	uint32_t extranonce_3 = 0;
-	while (extranonce_3 < UINT_MAX){
-		while (GLOBAL_STATE->stratum_queue.count < 1 && extranonce_2 < UINT_MAX && GLOBAL_STATE->abandon_work == 0)
+    uint32_t extranonce_2 = 0;
+	
+	while (GLOBAL_STATE->stratum_queue.count < 1 && extranonce_2 < UINT_MAX && GLOBAL_STATE->abandon_work == 0)
 		{
-			char *extranonce_2_str = extranonce_2_generate(extranonce_2, GLOBAL_STATE->extranonce_2_len);
-			char *extranonce_3_str = extranonce_2_generate(extranonce_3, GLOBAL_STATE->extranonce_2_len);
-			char *coinbase_tx = construct_coinbase_tx(mining_notification->coinbase_1, mining_notification->coinbase_2, extranonce_3_str, extranonce_2_str);//it is meant to scan the whole nonce space, which it does yet the function is unoptimised as it uses a Global, to optimise simply, have it do the whole GLOBAL_STATE->extranonce_str in this file instead of making the coinbase transaction and it doing the work in other files... a preprocess hack.
+		uint32_t extranonce_3 = 0;
 
-			char *merkle_root = calculate_merkle_root_hash(coinbase_tx, (uint8_t(*)[32])mining_notification->merkle_branches, mining_notification->n_merkle_branches);
-			bm_job next_job = construct_bm_job(mining_notification, merkle_root, GLOBAL_STATE->version_mask);
+		while (extranonce_3 < UINT_MAX)
+			{
+				char *extranonce_2_str = extranonce_2_generate(extranonce_2, GLOBAL_STATE->extranonce_2_len);
+				char *extranonce_3_str = extranonce_2_generate(extranonce_3, GLOBAL_STATE->extranonce_2_len);
+				char *coinbase_tx = construct_coinbase_tx(mining_notification->coinbase_1, mining_notification->coinbase_2, extranonce_3_str, extranonce_2_str);//it is meant to scan the whole nonce space, which it does yet the function is unoptimised as it uses a Global, to optimise simply, have it do the whole GLOBAL_STATE->extranonce_str in this file instead of making the coinbase transaction and it doing the work in other files... a preprocess hack.
 
-			bm_job *queued_next_job = malloc(sizeof(bm_job));
-			memcpy(queued_next_job, &next_job, sizeof(bm_job));
-			queued_next_job->extranonce2 = strdup(extranonce_2_str);
-			queued_next_job->jobid = strdup(mining_notification->job_id);
-			queued_next_job->version_mask = GLOBAL_STATE->version_mask;
+				char *merkle_root = calculate_merkle_root_hash(coinbase_tx, (uint8_t(*)[32])mining_notification->merkle_branches, mining_notification->n_merkle_branches);
+				bm_job next_job = construct_bm_job(mining_notification, merkle_root, GLOBAL_STATE->version_mask);
 
-			queue_enqueue(&GLOBAL_STATE->ASIC_jobs_queue, queued_next_job);
+				bm_job *queued_next_job = malloc(sizeof(bm_job));
+				memcpy(queued_next_job, &next_job, sizeof(bm_job));
+				queued_next_job->extranonce2 = strdup(extranonce_2_str);
+				queued_next_job->jobid = strdup(mining_notification->job_id);
+				queued_next_job->version_mask = GLOBAL_STATE->version_mask;
 
-			free(coinbase_tx);
-			free(merkle_root);
-			free(extranonce_2_str);
+				queue_enqueue(&GLOBAL_STATE->ASIC_jobs_queue, queued_next_job);
+
+				free(coinbase_tx);
+				free(merkle_root);
+				free(extranonce_2_str);
+				extranonce_3++;
+			}
 			extranonce_2++;
 		}
-		extranonce_3++;
-	}
         if (GLOBAL_STATE->abandon_work == 1)
         {
             GLOBAL_STATE->abandon_work = 0;
