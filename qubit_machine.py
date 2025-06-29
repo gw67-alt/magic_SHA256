@@ -1,43 +1,56 @@
 import sys
 import time
 import cv2
-import numpy as np # For np.mean
+import numpy as np
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStatusBar
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer, QObject
 from PyQt5.QtGui import QImage, QPixmap
 import pyqtgraph as pg
 from collections import deque
 import random
+import hashlib
+
 raw_value_for_guess = 2
 qubit_number = 0
 STARTING_CREDITS = 10000
 COST_PER_GUESS = 1
 WIN_CREDITS = 150
 game_state = {
-        "credits": STARTING_CREDITS,
-    }
+    "credits": STARTING_CREDITS,
+}
 
-# --- OpenCV Configuration (from previous script) ---
+# --- OpenCV Configuration ---
 MIN_MATCH_COUNT = 10
-LOWE_RATIO_TEST = 0.10 # Note: This is a very strict ratio
+LOWE_RATIO_TEST = 0.10
 KEY_TO_CYCLE_QT = Qt.Key_N
 KEY_TO_QUIT_QT = Qt.Key_Q
 
 # --- Chart Configuration ---
-MAX_CHART_POINTS = 100  # Number of data points to display on the chart
-MOVING_AVG_WINDOW = 100 # Window size for the moving average
+MAX_CHART_POINTS = 100
+MOVING_AVG_WINDOW = 100
 
 # --- Guessing Configuration ---
-GUESS_TRIGGER_COUNT = 8 # Number of samples before attempting a guess
-#!/usr/bin/env python3
-from multiprocessing import shared_memory
-import pickle
-import struct
-import time
-import random
+GUESS_TRIGGER_COUNT = 8
 
+PREFIX = "000000"
+def calculate_sha256_with_library(data):
+    try:
+        sha256_hash = hashlib.sha256()
+        if isinstance(data, str):
+            sha256_hash.update(data.encode('utf-8'))
+        elif isinstance(data, bytes):
+            sha256_hash.update(data)
+        else:
+            raise TypeError("Input data must be a string or bytes.")
+        hex_digest = sha256_hash.hexdigest()
+        if hex_digest.startswith(PREFIX):
+            print(data, hex_digest)
+        return hex_digest
+    except TypeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"An unexpected error occurred: {e}"
 
-# --- State Management Object (Same as before) ---
 class AppState(QObject):
     state_changed = pyqtSignal(int)
     capture_reference_requested = pyqtSignal()
@@ -68,7 +81,6 @@ class AppState(QObject):
 
 app_state = AppState()
 
-# --- OpenCV Processing Thread (Slightly modified for clarity and RANSAC threshold) ---
 class OpenCVThread(QThread):
     frame_ready = pyqtSignal(QImage)
     matches_count_ready = pyqtSignal(int)
@@ -91,7 +103,6 @@ class OpenCVThread(QThread):
 
     def initialize_features(self):
         self.orb = cv2.ORB_create(nfeatures=1000)
-        # BFMatcher with crossCheck=False is used for knnMatch
         self.bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
 
     def prepare_for_reference_capture(self):
@@ -102,7 +113,6 @@ class OpenCVThread(QThread):
         self.reference_kp = None
         self.reference_des = None
         self._capture_next_frame_as_reference = False
-        # This will trigger state_changed signal handled by MainWindow
         self.app_state.current_state = AppState.STATE_WAITING_FOR_REFERENCE
 
     def run(self):
@@ -125,17 +135,17 @@ class OpenCVThread(QThread):
             h, w, ch = frame_rgb.shape
             bytes_per_line = ch * w
             qt_image = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            self.frame_ready.emit(qt_image.copy()) # Emit a copy
+            self.frame_ready.emit(qt_image.copy())
 
-            num_good_matches_for_signal = 0 # Default to 0 (no good matches / not tracking)
+            num_good_matches_for_signal = 0
 
             if self._capture_next_frame_as_reference:
-                self.reference_frame = frame.copy() # Use BGR frame for CV operations
+                self.reference_frame = frame.copy()
                 self.reference_kp, self.reference_des = self.orb.detectAndCompute(self.reference_frame, None)
 
                 if self.reference_des is None or len(self.reference_kp) < MIN_MATCH_COUNT:
                     self.status_message.emit(f"Ref. Capture Failed: Not enough features ({len(self.reference_kp) if self.reference_kp is not None else 0}). Try again.")
-                    self.reference_frame = None # Clear invalid reference
+                    self.reference_frame = None
                     self.reference_kp = None
                     self.reference_des = None
                     self.app_state.current_state = AppState.STATE_WAITING_FOR_REFERENCE
@@ -143,9 +153,7 @@ class OpenCVThread(QThread):
                     self.status_message.emit(f"Reference Captured ({len(self.reference_kp)} keypoints). Tracking...")
                     self.app_state.current_state = AppState.STATE_TRACKING
                 self._capture_next_frame_as_reference = False
-                self.matches_count_ready.emit(0) # Emit 0 matches right after capture attempt
-
-
+                self.matches_count_ready.emit(0)
             elif self.app_state.current_state == AppState.STATE_TRACKING and self.reference_frame is not None and self.reference_des is not None:
                 current_kp, current_des = self.orb.detectAndCompute(frame, None)
                 actual_good_matches_count = 0
@@ -153,36 +161,27 @@ class OpenCVThread(QThread):
                 if current_des is not None and len(current_des) > 0:
                     all_matches = self.bf_matcher.knnMatch(self.reference_des, current_des, k=2)
                     good_matches = []
-                    
                     for m_arr in all_matches:
                         if len(m_arr) == 2:
                             m, n = m_arr
                             if m.distance < LOWE_RATIO_TEST * n.distance:
                                 good_matches.append(m)
-                    
                     actual_good_matches_count = len(good_matches)
-
                     if actual_good_matches_count >= MIN_MATCH_COUNT:
                         src_pts = np.float32([self.reference_kp[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
                         dst_pts = np.float32([current_kp[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-                        
-                        # Changed RANSAC threshold to a more common value (e.g., 5.0)
-                        H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0) 
-                        
+                        H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
                         if H is None:
-                            num_good_matches_for_signal = -1 # Indicate homography failure
+                            num_good_matches_for_signal = -1
                         else:
                             num_good_matches_for_signal = actual_good_matches_count
                     else:
-                        num_good_matches_for_signal = actual_good_matches_count 
+                        num_good_matches_for_signal = actual_good_matches_count
                 else:
                     num_good_matches_for_signal = 0
-                
                 self.matches_count_ready.emit(num_good_matches_for_signal)
-            
-            else: # Waiting for reference or reference invalid
-                self.matches_count_ready.emit(0) # Emit 0 if not tracking
-
+            else:
+                self.matches_count_ready.emit(0)
 
         cap.release()
         self.status_message.emit("Camera released.")
@@ -191,14 +190,12 @@ class OpenCVThread(QThread):
         self.running = False
         self.wait()
 
-
-# --- Main Application Window (Updated with Guessing Logic) ---
 class MainWindow(QMainWindow):
     def __init__(self, app_state_ref):
         super().__init__()
         self.app_state = app_state_ref
         self.setWindowTitle("OpenCV Homography Tracker with Guessing Game")
-        self.setGeometry(100, 100, 1200, 700) 
+        self.setGeometry(100, 100, 1200, 700)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -210,7 +207,7 @@ class MainWindow(QMainWindow):
         self.video_label.setStyleSheet("border: 1px solid black; background-color: #333;")
         self.video_label.setAlignment(Qt.AlignCenter)
         video_layout.addWidget(self.video_label)
-        main_layout.addLayout(video_layout, 2) 
+        main_layout.addLayout(video_layout, 2)
 
         controls_chart_layout = QVBoxLayout()
         self.match_chart_widget = pg.PlotWidget()
@@ -234,7 +231,7 @@ class MainWindow(QMainWindow):
         self.sequence = [0]
         self.i = 0
         controls_chart_layout.addWidget(self.match_chart_widget)
-        main_layout.addLayout(controls_chart_layout, 3) 
+        main_layout.addLayout(controls_chart_layout, 3)
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -253,8 +250,7 @@ class MainWindow(QMainWindow):
 
     def update_matches_chart_and_guess(self, raw_match_count_from_thread):
         actual_plot_count = raw_match_count_from_thread if raw_match_count_from_thread >= 0 else 0
-        
-       
+
         self.raw_match_history.append(actual_plot_count)
         self.time_points.append(self.current_time_step)
         self.current_time_step += 1
@@ -262,59 +258,53 @@ class MainWindow(QMainWindow):
         current_avg = 0.0
         if len(self.raw_match_history) > 0:
             avg_window_data = list(self.raw_match_history)[-MOVING_AVG_WINDOW:]
-            if avg_window_data: # Ensure not empty
+            if avg_window_data:
                 current_avg = np.mean(avg_window_data)
         self.avg_match_history.append(current_avg)
 
         list_time_points = list(self.time_points)
         list_raw_history = list(self.raw_match_history)
         list_avg_history = list(self.avg_match_history)
-        
+
         self.raw_match_data_line.setData(list_time_points, list_raw_history)
         self.avg_match_data_line.setData(list_time_points, list_avg_history)
 
         if self.app_state.current_state == AppState.STATE_TRACKING:
             self.guess_trigger_sample_counter += 1
-            
+
             if self.guess_trigger_sample_counter >= GUESS_TRIGGER_COUNT and game_state["credits"] > 0:
-                
-                is_above = raw_value_for_guess > current_avg
-                is_below = raw_value_for_guess < current_avg
-            
-                guess_message_timeout = 4000 # milliseconds
-                
-                # Get the current sequence
+                is_above = raw_value_for_guess > 1
+                is_below = raw_value_for_guess < 1
+
+                guess_message_timeout = 4000
+
                 old_sequence = self.sequence
                 self.i = int(self.sequence[-1])
-                if is_above or is_below: 
-                    
+                if is_above or is_below:
                     if self.sequence and int(self.sequence[-1]) == int(self.i):
                         self.i += 1
-                        current_preset_output = self.sequence[qubit_number] #parallelize, set qubit count....
-
+                        current_preset_output = self.sequence[qubit_number]
                         comparison_text = f"Raw ({current_preset_output}) is {'1' if is_above else '0'} Avg ({current_avg:.2f})"
-
                         guess_display_message = f"Analysis: {comparison_text}. --> Preset Output: {current_preset_output}"
                         calc = 1 if is_above else 0
-                        if calc*9 == 9: #superposition example, change '== 9' to either 9 or 0 yet still watch the credits always gain
-                            game_state["credits"] += WIN_CREDITS  
+                        if calc*9 == 9: #superposition example, change '== 9' to either 9 or 0 yet still watch the credits always gain, coherence time is fair, the inevitability is proof of photonic processing
+                            game_state["credits"] += WIN_CREDITS
                         else:
-                            game_state["credits"] -= WIN_CREDITS  
-                                              
+                            game_state["credits"] -= WIN_CREDITS
                         self.show_status_message(guess_display_message, guess_message_timeout)
                     else:
                         self.show_status_message("Preset guess sequence is unoriginal(sync issue)!", guess_message_timeout)
                 else:
                     equal_message = f"Raw ({raw_value_for_guess}) ~ Avg ({current_avg:.2f}). No preset output."
-                    self.show_status_message(equal_message, guess_message_timeout - 1000) # Shorter timeout
+                    self.show_status_message(equal_message, guess_message_timeout - 1000)
                 print(game_state["credits"])
                 self.guess_trigger_sample_counter = 0
 
-    def show_status_message(self, message, timeout=0): 
+    def show_status_message(self, message, timeout=0):
         self.status_bar.showMessage(message, timeout)
 
     def on_state_changed_gui(self, state):
-        self.guess_trigger_sample_counter = 0 
+        self.guess_trigger_sample_counter = 0
         if state == AppState.STATE_WAITING_FOR_REFERENCE:
             self.show_status_message("STATE: Waiting for Reference. Aim and press 'N'.")
             self.clear_chart_data()
@@ -334,13 +324,12 @@ class MainWindow(QMainWindow):
         if key == KEY_TO_QUIT_QT:
             self.close()
         elif key == KEY_TO_CYCLE_QT:
-            # Temporary messages for key presses, main state message will be set by on_state_changed_gui
             if self.app_state.current_state == AppState.STATE_WAITING_FOR_REFERENCE:
-                self.show_status_message("GUI: Requesting reference capture...", 2000) 
+                self.show_status_message("GUI: Requesting reference capture...", 2000)
                 self.app_state.request_capture_reference()
             elif self.app_state.current_state == AppState.STATE_TRACKING:
-                self.show_status_message("GUI: Requesting reset...", 2000) 
-                self.app_state.request_reset() 
+                self.show_status_message("GUI: Requesting reset...", 2000)
+                self.app_state.request_reset()
         else:
             super().keyPressEvent(event)
 
@@ -351,7 +340,7 @@ class MainWindow(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    pg.setConfigOptions(antialias=True) 
+    pg.setConfigOptions(antialias=True)
     main_window = MainWindow(app_state)
     main_window.show()
     sys.exit(app.exec_())
