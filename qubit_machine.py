@@ -296,7 +296,7 @@ class MainWindow(QMainWindow):
 
                         guess_display_message = f"Analysis: {comparison_text}. --> Preset Output: {current_preset_output}"
                         calc = 1 if is_above else 0
-                        if calc*9 == 9: #superposition example, change '== 9' to either 9 or 0 yet still watch the credits always gain or drop
+                        if calc*9 == 9: #superposition example, change '== 9' to either 9 or 0 yet still watch the credits always gain
                             game_state["credits"] += WIN_CREDITS  
                         else:
                             game_state["credits"] -= WIN_CREDITS  
