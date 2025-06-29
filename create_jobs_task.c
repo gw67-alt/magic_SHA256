@@ -30,7 +30,7 @@ void create_jobs_task(void *pvParameters)
 			{
 				char *extranonce_2_str = extranonce_2_generate(extranonce_2, GLOBAL_STATE->extranonce_2_len);
 				char *extranonce_3_str = extranonce_2_generate(extranonce_3, GLOBAL_STATE->extranonce_2_len);
-				char *coinbase_tx = construct_coinbase_tx(mining_notification->coinbase_1, mining_notification->coinbase_2, extranonce_3_str, extranonce_2_str);//it is meant to scan the whole nonce space, which it does yet the function is unoptimised as it uses a Global, to optimise simply, have it do the whole GLOBAL_STATE->extranonce_str in this file instead of making the coinbase transaction and it doing the work in other files... a preprocess hack.
+				char *coinbase_tx = construct_coinbase_tx(mining_notification->coinbase_1, mining_notification->coinbase_2, extranonce_3_str, extranonce_2_str);// GLOBAL_STATE->extranonce_str a preprocess hack for the integral anomaly considering a global is used. (it acquires all shares of a job, considering max job constraints...)
 
 				char *merkle_root = calculate_merkle_root_hash(coinbase_tx, (uint8_t(*)[32])mining_notification->merkle_branches, mining_notification->n_merkle_branches);
 				bm_job next_job = construct_bm_job(mining_notification, merkle_root, GLOBAL_STATE->version_mask);
