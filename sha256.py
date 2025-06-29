@@ -1,17 +1,45 @@
 import sys
 import time
 import cv2
-import numpy as np
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStatusBar, QGridLayout
+import numpy as np # For np.mean
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStatusBar
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer, QObject
-from PyQt5.QtGui import QImage, QPixmap, QFont
-# import pyqtgraph as pg # Removed pyqtgraph
+from PyQt5.QtGui import QImage, QPixmap
+import pyqtgraph as pg
 from collections import deque
-import os
-import hashlib
 import random
-PREFIX = "000000"
 
+import hashlib
+
+raw_value_for_guess = 2
+qubit_number = 0
+STARTING_CREDITS = 10000
+COST_PER_GUESS = 1
+WIN_CREDITS = 150
+game_state = {
+        "credits": STARTING_CREDITS,
+    }
+
+# --- OpenCV Configuration (from previous script) ---
+MIN_MATCH_COUNT = 10
+LOWE_RATIO_TEST = 0.10 # Note: This is a very strict ratio
+KEY_TO_CYCLE_QT = Qt.Key_N
+KEY_TO_QUIT_QT = Qt.Key_Q
+
+# --- Chart Configuration ---
+MAX_CHART_POINTS = 100  # Number of data points to display on the chart
+MOVING_AVG_WINDOW = 100 # Window size for the moving average
+
+# --- Guessing Configuration ---
+GUESS_TRIGGER_COUNT = 8 # Number of samples before attempting a guess
+#!/usr/bin/env python3
+from multiprocessing import shared_memory
+import pickle
+import struct
+import time
+import random
+
+PREFIX = "000000"
 def calculate_sha256_with_library(data):
     """
     Calculates the SHA-256 hash of the given data using Python's hashlib library.
@@ -45,105 +73,47 @@ def calculate_sha256_with_library(data):
     except Exception as e:
         return f"An unexpected error occurred: {e}"
 
-
-# Adjustable game parameters
-# Initial threshold - will be dynamically updated to use the average match count
-MATCH_THRESHOLD_FOR_GUESS = 0.5  # Initial value, will be adjusted dynamically
-STARTING_CREDITS = 10000000000000000
-COST_PER_GUESS = 1
-WIN_CREDITS = 1
-
-# Game state
-game_state = {
-    "credits": STARTING_CREDITS,
-    "wins": 0,
-    "losses": 0,
-    "coasting": 0,
-    "ready": 0
-}
-
-# Load data file safely
-data = []
-try:
-    with open("x.txt", 'r', encoding='utf-8') as file:
-        data = [line.strip() for line in file.readlines() if line.strip()]
-    if not data:
-        print("Warning: x.txt file is empty. Using dummy data.")
-        data = ["55", "55", "AA", "55", "BB"]  # Dummy data if file is empty
-except FileNotFoundError:
-    print("Warning: x.txt file not found. Creating with dummy data.")
-    with open("x.txt", 'w', encoding='utf-8') as file:
-        file.write("55\n55\nAA\n55\nBB\n")
-    data = ["55", "55", "AA", "55", "BB"]  # Dummy data for new file
-
-# --- OpenCV Configuration ---
-MIN_MATCH_COUNT = 5  # Lowered from 10 to be more lenient
-LOWE_RATIO_TEST = 0.999  # Increased from 0.10 to be less strict
-KEY_TO_CYCLE_QT = Qt.Key_N
-KEY_TO_QUIT_QT = Qt.Key_Q
-
-# --- Chart Configuration ---
-MAX_CHART_POINTS = 100  # Number of data points to display on the chart (still used by CameraTracker)
-MOVING_AVG_WINDOW = 150  # Window size for the moving average (still used by CameraTracker)
-
-# --- Guessing Configuration ---
-GUESS_TRIGGER_COUNT = 0  # Number of samples before attempting a guess
-
-# --- Camera IDs ---
-CAMERA_0_ID = 0
-CAMERA_1_ID = 1
-CAMERA_2_ID = 2 # *** ADDED: Third camera ID ***
-ALL_CAMERA_IDS = [CAMERA_0_ID, CAMERA_1_ID, CAMERA_2_ID] # *** ADDED: Helper list ***
-
-# --- State Management Object ---
+# --- State Management Object (Same as before) ---
 class AppState(QObject):
-    state_changed = pyqtSignal(int, int)  # camera_id, state
-    capture_reference_requested = pyqtSignal(int)  # camera_id
-    reset_requested = pyqtSignal(int)  # camera_id
-    game_state_updated = pyqtSignal(dict)  # New signal for game state updates
+    state_changed = pyqtSignal(int)
+    capture_reference_requested = pyqtSignal()
+    reset_requested = pyqtSignal()
 
     STATE_WAITING_FOR_REFERENCE = 0
     STATE_TRACKING = 1
 
     def __init__(self):
         super().__init__()
-        # Store state per camera
-        self._camera_states = {
-            CAMERA_0_ID: self.STATE_WAITING_FOR_REFERENCE,
-            CAMERA_1_ID: self.STATE_WAITING_FOR_REFERENCE,
-            CAMERA_2_ID: self.STATE_WAITING_FOR_REFERENCE # *** ADDED: State for camera 2 ***
-        }
+        self._current_state = self.STATE_WAITING_FOR_REFERENCE
 
-    def get_camera_state(self, camera_id):
-        return self._camera_states.get(camera_id, self.STATE_WAITING_FOR_REFERENCE)
+    @property
+    def current_state(self):
+        return self._current_state
 
-    def set_camera_state(self, camera_id, value):
-        if self._camera_states.get(camera_id) != value:
-            self._camera_states[camera_id] = value
-            self.state_changed.emit(camera_id, value)
+    @current_state.setter
+    def current_state(self, value):
+        if self._current_state != value:
+            self._current_state = value
+            self.state_changed.emit(value)
 
-    def request_capture_reference(self, camera_id):
-        self.capture_reference_requested.emit(camera_id)
+    def request_capture_reference(self):
+        self.capture_reference_requested.emit()
 
-    def request_reset(self, camera_id):
-        self.reset_requested.emit(camera_id)
-
-    def update_game_state(self, state_dict):
-        self.game_state_updated.emit(state_dict)
+    def request_reset(self):
+        self.reset_requested.emit()
 
 app_state = AppState()
 
-# --- OpenCV Processing Thread for a single camera ---
+# --- OpenCV Processing Thread (Slightly modified for clarity and RANSAC threshold) ---
 class OpenCVThread(QThread):
-    frame_ready = pyqtSignal(QImage, int)  # QImage, camera_id
-    matches_count_ready = pyqtSignal(int, int)  # matches, camera_id
-    status_message = pyqtSignal(str, int)  # message, camera_id
+    frame_ready = pyqtSignal(QImage)
+    matches_count_ready = pyqtSignal(int)
+    status_message = pyqtSignal(str)
 
-    def __init__(self, app_state_ref, camera_id):
+    def __init__(self, app_state_ref):
         super().__init__()
         self.running = False
         self.app_state = app_state_ref
-        self.camera_id = camera_id
 
         self.reference_frame = None
         self.reference_kp = None
@@ -152,15 +122,11 @@ class OpenCVThread(QThread):
         self.bf_matcher = None
         self._capture_next_frame_as_reference = False
 
-        # Connect to signals filtered by camera_id
-        self.app_state.capture_reference_requested.connect(
-            lambda cam_id: self.prepare_for_reference_capture() if cam_id == self.camera_id else None)
-        self.app_state.reset_requested.connect(
-            lambda cam_id: self.reset_reference() if cam_id == self.camera_id else None)
+        self.app_state.capture_reference_requested.connect(self.prepare_for_reference_capture)
+        self.app_state.reset_requested.connect(self.reset_reference)
 
     def initialize_features(self):
-        # Enhanced ORB parameters for better feature detection
-        self.orb = cv2.ORB_create(nfeatures=2000, scaleFactor=1.2, nlevels=8)
+        self.orb = cv2.ORB_create(nfeatures=1000)
         # BFMatcher with crossCheck=False is used for knnMatch
         self.bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
 
@@ -173,545 +139,255 @@ class OpenCVThread(QThread):
         self.reference_des = None
         self._capture_next_frame_as_reference = False
         # This will trigger state_changed signal handled by MainWindow
-        self.app_state.set_camera_state(self.camera_id, AppState.STATE_WAITING_FOR_REFERENCE)
-
-    def preprocess_frame(self, frame):
-        """Enhance frame for better feature detection"""
-        # Convert to grayscale
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # Apply histogram equalization to improve contrast
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray)
-
-        # Optional: Apply slight Gaussian blur to reduce noise
-        # enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
-
-        return enhanced
+        self.app_state.current_state = AppState.STATE_WAITING_FOR_REFERENCE
 
     def run(self):
         self.running = True
         self.initialize_features()
 
-        cap = cv2.VideoCapture(self.camera_id)
+        cap = cv2.VideoCapture(qubit_number)
         if not cap.isOpened():
-            self.status_message.emit(f"Error: Cannot open camera {self.camera_id}.", self.camera_id)
+            self.status_message.emit("Error: Cannot open camera.")
             self.running = False
             return
 
         while self.running:
             ret, frame = cap.read()
             if not ret:
-                self.status_message.emit(f"Error: Can't receive frame from camera {self.camera_id}.", self.camera_id)
+                self.status_message.emit("Error: Can't receive frame.")
                 continue
 
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = frame_rgb.shape
             bytes_per_line = ch * w
             qt_image = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            self.frame_ready.emit(qt_image.copy(), self.camera_id)  # Emit a copy with camera_id
+            self.frame_ready.emit(qt_image.copy()) # Emit a copy
 
-            num_good_matches_for_signal = 0  # Default to 0 (no good matches / not tracking)
+            num_good_matches_for_signal = 0 # Default to 0 (no good matches / not tracking)
 
             if self._capture_next_frame_as_reference:
-                self.reference_frame = frame.copy()  # Keep original for display
-                processed_ref = self.preprocess_frame(self.reference_frame)
-                self.reference_kp, self.reference_des = self.orb.detectAndCompute(processed_ref, None)
+                self.reference_frame = frame.copy() # Use BGR frame for CV operations
+                self.reference_kp, self.reference_des = self.orb.detectAndCompute(self.reference_frame, None)
 
                 if self.reference_des is None or len(self.reference_kp) < MIN_MATCH_COUNT:
-                    self.status_message.emit(
-                        f"Ref. Capture Failed (Cam {self.camera_id}): Not enough features " +
-                        f"({len(self.reference_kp) if self.reference_kp is not None else 0}). Try again.",
-                        self.camera_id
-                    )
-                    self.reference_frame = None  # Clear invalid reference
+                    self.status_message.emit(f"Ref. Capture Failed: Not enough features ({len(self.reference_kp) if self.reference_kp is not None else 0}). Try again.")
+                    self.reference_frame = None # Clear invalid reference
                     self.reference_kp = None
                     self.reference_des = None
-                    self.app_state.set_camera_state(self.camera_id, AppState.STATE_WAITING_FOR_REFERENCE)
+                    self.app_state.current_state = AppState.STATE_WAITING_FOR_REFERENCE
                 else:
-                    self.status_message.emit(
-                        f"Reference Captured (Cam {self.camera_id}): {len(self.reference_kp)} keypoints. Tracking...",
-                        self.camera_id
-                    )
-                    self.app_state.set_camera_state(self.camera_id, AppState.STATE_TRACKING)
+                    self.status_message.emit(f"Reference Captured ({len(self.reference_kp)} keypoints). Tracking...")
+                    self.app_state.current_state = AppState.STATE_TRACKING
                 self._capture_next_frame_as_reference = False
-                self.matches_count_ready.emit(0, self.camera_id)  # Emit 0 matches right after capture attempt
+                self.matches_count_ready.emit(0) # Emit 0 matches right after capture attempt
 
-            elif self.app_state.get_camera_state(self.camera_id) == AppState.STATE_TRACKING and self.reference_frame is not None and self.reference_des is not None:
-                processed_frame = self.preprocess_frame(frame)
-                current_kp, current_des = self.orb.detectAndCompute(processed_frame, None)
+
+            elif self.app_state.current_state == AppState.STATE_TRACKING and self.reference_frame is not None and self.reference_des is not None:
+                current_kp, current_des = self.orb.detectAndCompute(frame, None)
                 actual_good_matches_count = 0
 
                 if current_des is not None and len(current_des) > 0:
-                    try:
-                        # Try to perform knnMatch
-                        all_matches = self.bf_matcher.knnMatch(self.reference_des, current_des, k=2)
-                        good_matches = []
+                    all_matches = self.bf_matcher.knnMatch(self.reference_des, current_des, k=2)
+                    good_matches = []
+                    
+                    for m_arr in all_matches:
+                        if len(m_arr) == 2:
+                            m, n = m_arr
+                            if m.distance < LOWE_RATIO_TEST * n.distance:
+                                good_matches.append(m)
+                    
+                    actual_good_matches_count = len(good_matches)
 
-                        for m_arr in all_matches:
-                            if len(m_arr) == 2:
-                                m, n = m_arr
-                                if m.distance < LOWE_RATIO_TEST * n.distance:
-                                    good_matches.append(m)
-
-                        actual_good_matches_count = len(good_matches)
-
-                        # Improved logging
-                        if actual_good_matches_count < MIN_MATCH_COUNT:
-                            self.status_message.emit(
-                                f"Low matches (Cam {self.camera_id}): {actual_good_matches_count}/{MIN_MATCH_COUNT}",
-                                self.camera_id
-                            )
-
-                        if actual_good_matches_count >= MIN_MATCH_COUNT:
-                            try:
-                                src_pts = np.float32([self.reference_kp[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-                                dst_pts = np.float32([current_kp[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-
-                                # RANSAC threshold increased slightly for more tolerance
-                                H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 10.0)
-
-                                if H is None:
-                                    num_good_matches_for_signal = actual_good_matches_count // 2  # Half the matches instead of -1
-                                    self.status_message.emit(f"Homography calculation failed (Cam {self.camera_id})", self.camera_id)
-                                else:
-                                    num_good_matches_for_signal = actual_good_matches_count
-                            except Exception as e:
-                                self.status_message.emit(f"Homography error (Cam {self.camera_id}): {str(e)}", self.camera_id)
-                                num_good_matches_for_signal = 0
+                    if actual_good_matches_count >= MIN_MATCH_COUNT:
+                        src_pts = np.float32([self.reference_kp[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                        dst_pts = np.float32([current_kp[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                        
+                        # Changed RANSAC threshold to a more common value (e.g., 5.0)
+                        H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0) 
+                        
+                        if H is None:
+                            num_good_matches_for_signal = -1 # Indicate homography failure
                         else:
                             num_good_matches_for_signal = actual_good_matches_count
-                    except Exception as e:
-                        self.status_message.emit(f"Match error (Cam {self.camera_id}): {str(e)}", self.camera_id)
-                        num_good_matches_for_signal = 0
+                    else:
+                        num_good_matches_for_signal = actual_good_matches_count 
                 else:
                     num_good_matches_for_signal = 0
-                    self.status_message.emit(f"No features detected in current frame (Cam {self.camera_id})", self.camera_id)
+                
+                self.matches_count_ready.emit(num_good_matches_for_signal)
+            
+            else: # Waiting for reference or reference invalid
+                self.matches_count_ready.emit(0) # Emit 0 if not tracking
 
-                self.matches_count_ready.emit(num_good_matches_for_signal, self.camera_id)
-
-            else:  # Waiting for reference or reference invalid
-                self.matches_count_ready.emit(0, self.camera_id)  # Emit 0 if not tracking
 
         cap.release()
-        self.status_message.emit(f"Camera {self.camera_id} released.", self.camera_id)
+        self.status_message.emit("Camera released.")
 
     def stop(self):
         self.running = False
         self.wait()
 
 
-# --- Camera Match Data Tracker Class ---
-class CameraTracker:
-    def __init__(self, camera_id, initial_threshold=MATCH_THRESHOLD_FOR_GUESS):
-        self.camera_id = camera_id
-        self.current_threshold = initial_threshold
-        self.threshold_history = deque(maxlen=10)
-        self.raw_match_history = deque(maxlen=MAX_CHART_POINTS)
-        self.avg_match_history = deque(maxlen=MAX_CHART_POINTS)
-        self.time_points = deque(maxlen=MAX_CHART_POINTS)
-        self.current_time_step = 0
-        self.guess_trigger_sample_counter = 0
-        self.is_below_threshold = False  # Track if current matches are below threshold
-
-    def update_match_data(self, raw_match_count):
-        """Update match data and threshold calculations"""
-        actual_plot_count = raw_match_count if raw_match_count >= 0 else 0
-
-        self.raw_match_history.append(actual_plot_count)
-        self.time_points.append(self.current_time_step)
-        self.current_time_step += 1
-
-        # Update threshold history and recalculate dynamic threshold
-        self.threshold_history.append(actual_plot_count)
-
-        # Calculate moving average for chart display
-        current_avg = 0.0
-        if len(self.raw_match_history) > 0:
-            avg_window_data = list(self.raw_match_history)[-MOVING_AVG_WINDOW:]
-            if avg_window_data:  # Ensure not empty
-                current_avg = np.mean(avg_window_data)
-        self.avg_match_history.append(current_avg)
-
-        # Update dynamic threshold based on recent match history
-        if len(self.threshold_history) > 5:  # Need at least a few data points
-            self.current_threshold = np.mean(self.threshold_history)
-
-        # Update is_below_threshold status
-        self.is_below_threshold = actual_plot_count < self.current_threshold
-
-        # Increment the guess trigger counter
-        self.guess_trigger_sample_counter += 1
-
-        return {
-            'time_points': list(self.time_points),
-            'raw_history': list(self.raw_match_history),
-            'avg_history': list(self.avg_match_history),
-            'current_threshold': self.current_threshold,
-            'is_below_threshold': self.is_below_threshold,
-            'should_guess': self.guess_trigger_sample_counter >= GUESS_TRIGGER_COUNT
-        }
-
-    def reset_guess_counter(self):
-        """Reset the guess trigger counter after a guess is made"""
-        self.guess_trigger_sample_counter = 0
-
-    def clear_data(self):
-        """Clear all tracked data"""
-        self.raw_match_history.clear()
-        self.avg_match_history.clear()
-        self.time_points.clear()
-        self.threshold_history.clear()
-        self.current_time_step = 0
-        self.current_threshold = MATCH_THRESHOLD_FOR_GUESS
-        self.guess_trigger_sample_counter = 0
-        self.is_below_threshold = False
-
-
-# --- Main Application Window (Updated with Triple Camera Support) ---
+# --- Main Application Window (Updated with Guessing Logic) ---
 class MainWindow(QMainWindow):
     def __init__(self, app_state_ref):
         super().__init__()
         self.app_state = app_state_ref
-        self.setWindowTitle("Triple Camera Homography Tracker with Guessing Game (No Charts)") # *** UPDATED TITLE ***
-        # *** UPDATED GEOMETRY for three cameras (640*3 width + padding) ***
-        self.setGeometry(100, 100, 1980, 500)
-        self.rand_deterministic = np.random.binomial(n=200, p=0.498, size=20000)
-        # Create camera trackers
-        self.camera_trackers = {
-            CAMERA_0_ID: CameraTracker(CAMERA_0_ID),
-            CAMERA_1_ID: CameraTracker(CAMERA_1_ID),
-            CAMERA_2_ID: CameraTracker(CAMERA_2_ID) # *** ADDED: Tracker for camera 2 ***
-        }
-        self.last_alignment_alert_time = 0
+        self.setWindowTitle("OpenCV Homography Tracker with Guessing Game")
+        self.setGeometry(100, 100, 1200, 700) 
 
-        # Setup UI
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        main_layout = QHBoxLayout(central_widget)
 
-        # Top section: cameras grid
-        cameras_layout = QGridLayout()
+        video_layout = QVBoxLayout()
+        self.video_label = QLabel("Initializing Camera...")
+        self.video_label.setFixedSize(640, 480)
+        self.video_label.setStyleSheet("border: 1px solid black; background-color: #333;")
+        self.video_label.setAlignment(Qt.AlignCenter)
+        video_layout.addWidget(self.video_label)
+        main_layout.addLayout(video_layout, 2) 
 
-        # Video displays
-        self.video_labels = {}
-        for col, cam_id in enumerate(ALL_CAMERA_IDS): # *** UPDATED to use ALL_CAMERA_IDS ***
-            label = QLabel(f"Initializing Camera {cam_id}...")
-            label.setFixedSize(640, 360)
-            label.setStyleSheet("border: 1px solid black; background-color: #333;")
-            label.setAlignment(Qt.AlignCenter)
-            self.video_labels[cam_id] = label
-            # *** UPDATED to place cameras side-by-side in a single row ***
-            cameras_layout.addWidget(label, 0, col) # Use col for column index
+        controls_chart_layout = QVBoxLayout()
+        self.match_chart_widget = pg.PlotWidget()
+        self.match_chart_widget.setBackground('w')
+        self.match_chart_widget.setTitle("Feature Matches Analysis", color="k", size="12pt")
+        self.match_chart_widget.setLabel('left', 'Match Count', color='k')
+        self.match_chart_widget.setLabel('bottom', 'Time (frames)', color='k')
+        self.match_chart_widget.showGrid(x=True, y=True)
+        self.match_chart_widget.addLegend()
 
-        main_layout.addLayout(cameras_layout)
+        self.raw_match_data_line = self.match_chart_widget.plot(pen=pg.mkPen('b', width=2), name="Raw Matches")
+        self.raw_match_history = deque(maxlen=MAX_CHART_POINTS)
 
-        # Middle section: (Removed pyqtgraph charts)
+        self.avg_match_data_line = self.match_chart_widget.plot(pen=pg.mkPen('r', width=2, style=Qt.DashLine), name=f"Avg Matches (Win: {MOVING_AVG_WINDOW})")
+        self.avg_match_history = deque(maxlen=MAX_CHART_POINTS)
 
-        # Bottom section: game stats and instructions
-        bottom_layout = QVBoxLayout()
+        self.time_points = deque(maxlen=MAX_CHART_POINTS)
+        self.current_time_step = 0
 
-        # Game stats panel
-        stats_layout = QHBoxLayout()
+        self.guess_trigger_sample_counter = 0
+        self.sequence = [0]
+        self.i = 0
+        controls_chart_layout.addWidget(self.match_chart_widget)
+        main_layout.addLayout(controls_chart_layout, 3) 
 
-        self.credits_label = QLabel(f"Credits: {game_state['credits']}")
-        self.credits_label.setFont(QFont('Arial', 14))
-        self.credits_label.setStyleSheet("color: green; font-weight: bold;")
-
-        self.wins_label = QLabel(f"Success states: {game_state.get('wins', 0)}")
-        self.wins_label.setFont(QFont('Arial', 14))
-        self.wins_label.setStyleSheet("color: blue;")
-
-        self.ready_label = QLabel(f"Ready states: {game_state.get('ready', 0)}")
-        self.ready_label.setFont(QFont('Arial', 14))
-        self.ready_label.setStyleSheet("color: red;")
-
-        stats_layout.addWidget(self.credits_label)
-        stats_layout.addWidget(self.wins_label)
-        stats_layout.addWidget(self.ready_label)
-
-        bottom_layout.addLayout(stats_layout)
-
-        # Instructions
-        instructions_label = QLabel("Instructions: Press 'N' to capture reference or reset for all cameras. Press 'Q' to quit.") # *** UPDATED instructions text ***
-        instructions_label.setAlignment(Qt.AlignCenter)
-        instructions_label.setFont(QFont('Arial', 10))
-        bottom_layout.addWidget(instructions_label)
-
-        main_layout.addLayout(bottom_layout)
-
-        # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
-        # Create OpenCV threads for each camera
-        self.opencv_threads = {}
-        for cam_id in ALL_CAMERA_IDS: # *** UPDATED to use ALL_CAMERA_IDS ***
-            thread = OpenCVThread(self.app_state, cam_id)
-            thread.frame_ready.connect(self.update_video_frame)
-            thread.matches_count_ready.connect(self.update_matches_data) # Renamed for clarity
-            thread.status_message.connect(self.show_status_message)
-            self.opencv_threads[cam_id] = thread
-
-        # Connect app state signals
+        self.opencv_thread = OpenCVThread(self.app_state)
+        self.opencv_thread.frame_ready.connect(self.update_video_frame)
+        self.opencv_thread.matches_count_ready.connect(self.update_matches_chart_and_guess)
+        self.opencv_thread.status_message.connect(self.show_status_message)
         self.app_state.state_changed.connect(self.on_state_changed_gui)
-        self.app_state.game_state_updated.connect(self.update_game_stats)
 
-        # Game state tracking variables
-        self.data_index = 0
-        self.init_count = 0
+        self.opencv_thread.start()
+        self.on_state_changed_gui(self.app_state.current_state)
 
-        # Start the threads
-        for thread in self.opencv_threads.values():
-            thread.start()
+    def update_video_frame(self, q_image):
+        self.video_label.setPixmap(QPixmap.fromImage(q_image))
 
-        # Set initial UI state
-        for cam_id in ALL_CAMERA_IDS: # *** UPDATED to use ALL_CAMERA_IDS ***
-            self.on_state_changed_gui(cam_id, self.app_state.get_camera_state(cam_id))
+    def update_matches_chart_and_guess(self, raw_match_count_from_thread):
+        actual_plot_count = raw_match_count_from_thread if raw_match_count_from_thread >= 0 else 0
+        
+       
+        self.raw_match_history.append(actual_plot_count)
+        self.time_points.append(self.current_time_step)
+        self.current_time_step += 1
 
-    def update_video_frame(self, q_image, camera_id):
-        """Update the video frame for the specified camera"""
-        if camera_id in self.video_labels:
-            self.video_labels[camera_id].setPixmap(QPixmap.fromImage(q_image))
+        current_avg = 0.0
+        if len(self.raw_match_history) > 0:
+            avg_window_data = list(self.raw_match_history)[-MOVING_AVG_WINDOW:]
+            if avg_window_data: # Ensure not empty
+                current_avg = np.mean(avg_window_data)
+        self.avg_match_history.append(current_avg)
 
-    def check_data_alignment(self): # *** RENAMED and logic potentially adjusted for three cameras ***
-        """
-        Check if the average match counts from all cameras are close.
-        """
-        current_time = time.time()
-        if hasattr(self, 'last_alignment_alert_time') and \
-           (current_time - self.last_alignment_alert_time) < 5:  # 5 second cooldown
-            return
+        list_time_points = list(self.time_points)
+        list_raw_history = list(self.raw_match_history)
+        list_avg_history = list(self.avg_match_history)
+        
+        self.raw_match_data_line.setData(list_time_points, list_raw_history)
+        self.avg_match_data_line.setData(list_time_points, list_avg_history)
 
-        averages = []
-        for cam_id in ALL_CAMERA_IDS:
-            tracker = self.camera_trackers[cam_id]
-            if not tracker.avg_match_history:
-                return # Need data from all trackers
-            averages.append(tracker.avg_match_history[-1])
-
-        if not averages: # Should not happen if previous check passed
-            return
-
-        # Check if all averages are close to each other
-        # For simplicity, check if the difference between max and min average is small
-        alignment_threshold_value = 10.0 # Example threshold, tune as needed
-
-        if (max(averages) - min(averages)) <= alignment_threshold_value:
-            avg_strs = [f"Cam{i}: {avg:.2f}" for i, avg in enumerate(averages)]
-            alignment_msg = (f"DATA ALIGNMENT DETECTED! Cameras' average match counts are close "
-                             f"({', '.join(avg_strs)})")
-            print(alignment_msg)
-            self.show_status_message(alignment_msg, 3000)
-            self.last_alignment_alert_time = current_time
-
-
-    def update_matches_data(self, raw_match_count, camera_id): # *** RENAMED from update_matches_chart ***
-        """
-        Process match count data from CameraTracker.
-        """
-        if camera_id not in self.camera_trackers:
-            return
-
-        tracker = self.camera_trackers[camera_id]
-        results = tracker.update_match_data(raw_match_count)
-
-        # Check if all cameras are tracking
-        all_tracking = all(
-            self.app_state.get_camera_state(cid) == AppState.STATE_TRACKING for cid in ALL_CAMERA_IDS
-        )
-
-        if all_tracking and len(results['avg_history']) > 0:
-            self.check_data_alignment()
-
-        if all_tracking and results['should_guess']:
-            tracker.reset_guess_counter() # Reset for the current camera
-
-            # *** Make guess processing dependent on one camera, e.g., CAMERA_0_ID, to avoid multiple calls ***
-            if camera_id == CAMERA_0_ID:
-                self.process_all_cameras_guess()
-
-
-    def process_all_cameras_guess(self): # *** RENAMED and logic updated for three cameras ***
-        """Process a guess using the state of all cameras"""
-        # Get the below threshold status for all cameras
-        cameras_below_threshold = {
-            cid: self.camera_trackers[cid].is_below_threshold for cid in ALL_CAMERA_IDS
-        }
-        all_below = all(cameras_below_threshold.values())
-        special = [val for val in cameras_below_threshold.values()]
-
-        any_not_below = any(not status for status in cameras_below_threshold.values())
-        print(cameras_below_threshold.values())
-
-        if game_state["credits"] <= 0:
-            self.show_status_message("No credits left! Game over.", 3000)
-            return
-
-        if not data:
-            self.show_status_message("Error: No data available for x.txt!", 3000)
-            return
-        current_nonce = self.init_count
-        print("INVALID",current_nonce)
-        iterations_for_sha = 1000000
-        try:
-            self.init_count = (self.init_count + iterations_for_sha) % 4294967294
-            if self.init_count + iterations_for_sha >= 4294967290:
-                self.init_count = 0
-                print("Nonce counter `init_count` reset to 0.")
-
-            current_data_file_value_str = data[self.data_index % len(data)]
-            try:
-                hex_value_from_file = int(current_data_file_value_str, 16)
-            except ValueError:
-                hex_value_from_file = -1
-
-            camera_status_parts = [f"Cam{cid}: {'Below' if cameras_below_threshold[cid] else 'Above'}" for cid in ALL_CAMERA_IDS]
-            camera_status_str = ", ".join(camera_status_parts)
+        if self.app_state.current_state == AppState.STATE_TRACKING:
+            self.guess_trigger_sample_counter += 1
             
-            if any_not_below: # All cameras are below threshold
-                game_state["credits"] -= COST_PER_GUESS
-                game_state["coasting"] += 1
-            # *** UPDATED win/loss logic for three cameras ***
-            if all_below: # All cameras are below threshold
-
-                match_found_sha = False
-                winning_nonce = -1
-                current_nonce = self.init_count
-                print("VALID",current_nonce)
-                if current_nonce >= 100 and current_nonce <= 200: #or any function containing a nonce
-                    match_found_sha = True
-                    winning_nonce = current_nonce
-                    #print(f"Success @ Nonce: {winning_nonce}, Base: {self.init_count})")
-
-                if match_found_sha:
-                    game_state["credits"] += WIN_CREDITS
-                    #self.show_status_message(
-                        #f"SHA Win! All Cams Below ({camera_status_str}) | Nonce: {winning_nonce}. +{WIN_CREDITS} credits!", 2000)
-                else:
-
-                    game_state["credits"] -= WIN_CREDITS
-                    #self.show_status_message(
-                        #f"Lost (SHA Fail)! All Cams Below ({camera_status_str}). -{COST_PER_GUESS} credits.", 2000)
-
-                # Log debug info (expanded for 3 cameras)
-                threshold_strs = [f"Cam{cid}={self.camera_trackers[cid].current_threshold:.2f}" for cid in ALL_CAMERA_IDS]
-                #print(f"Guess Cycle: {camera_status_str} | x.txt val: {current_data_file_value_str} (0x{hex_value_from_file:X}), "
-                      #f"SHA Base Nonce: {self.init_count}, Checked up to: {self.init_count + iterations_for_sha -1}, "
-                      #f"Credits: {game_state['credits']}, Success: {game_state['wins']}, Ready/ready: {game_state['ready']}, Losses: {game_state['losses']}, Coasting: {game_state['coasting']}, "
-                      #f"Thresholds: {', '.join(threshold_strs)}")
+            if self.guess_trigger_sample_counter >= GUESS_TRIGGER_COUNT and game_state["credits"] > 0:
                 
-            else: # At least one camera is not below threshold
-                self.show_status_message(
-                    f"Lost (Alignment Fail - Not all cams below)! {camera_status_str}. -{COST_PER_GUESS} credits.", 2000)
-                # Log debug info for alignment fail
-                threshold_strs = [f"Cam{cid}={self.camera_trackers[cid].current_threshold:.2f}" for cid in ALL_CAMERA_IDS]
-                #print(f"Guess Cycle (Alignment Fail): {camera_status_str} | x.txt val: {current_data_file_value_str} (0x{hex_value_from_file:X}), "
-                      #f"SHA Base Nonce: {self.init_count}, "
-                      #f"Credits: {game_state['credits']}, Success: {game_state['wins']}, Ready/ready: {game_state['ready']}, "
-                      #f"Thresholds: {', '.join(threshold_strs)}")
-            if special[0] == True and special[1] == False and special[2] == False: # All cameras are below threshold
-                game_state["ready"] = game_state.get("ready", 0) + 1 # Not a "ready" state for SHA if alignment fails
+                is_above = raw_value_for_guess > current_avg
+                is_below = raw_value_for_guess < current_avg
+            
+                guess_message_timeout = 4000 # milliseconds
+                
+                # Get the current sequence
+                old_sequence = self.sequence
+                self.i = int(self.sequence[-1])
+                if is_above or is_below: 
+                    
+                    if self.sequence and int(self.sequence[-1]) == int(self.i):
+                        self.i += 1
+                        current_preset_output = self.sequence[qubit_number] #parallelize, set qubit count....
 
-                match_found_sha = False
-                winning_nonce = -1
+                        comparison_text = f"Raw ({current_preset_output}) is {'1' if is_above else '0'} Avg ({current_avg:.2f})"
 
-                print("VALID",current_nonce)
-                for i in range(iterations_for_sha):
-                    if calculate_sha256_with_library("GeorgeW"+ str(current_nonce+i)).startswith(PREFIX): #or any function containing a nonce
-                        match_found_sha = True
-                        winning_nonce = current_nonce
-                        print(f"Success @ Nonce: {winning_nonce}, Base: {self.init_count})")
-
-                    if match_found_sha:
-                        game_state["credits"] += WIN_CREDITS
-                        game_state["wins"] = game_state.get("wins", 0) + 1
-                        self.show_status_message(
-                            f"SHA Win! All Cams Below ({camera_status_str}) | Nonce: {winning_nonce}. +{WIN_CREDITS} credits!", 2000)
-                        break
+                        guess_display_message = f"Analysis: {comparison_text}. --> Preset Output: {current_preset_output}"
+                        calc = 1 if is_above else 0
+                        if calc*9 == 9: #superposition example, change '== 9' to either 9 or 0 yet still watch the credits always gain, coherence time is fair
+                            game_state["credits"] += WIN_CREDITS  
+                        else:
+                            game_state["credits"] -= WIN_CREDITS  
+                                              
+                        self.show_status_message(guess_display_message, guess_message_timeout)
                     else:
-                        game_state["losses"] = game_state.get("losses", 0) + 1
+                        self.show_status_message("Preset guess sequence is unoriginal(sync issue)!", guess_message_timeout)
+                else:
+                    equal_message = f"Raw ({raw_value_for_guess}) ~ Avg ({current_avg:.2f}). No preset output."
+                    self.show_status_message(equal_message, guess_message_timeout - 1000) # Shorter timeout
+                print(game_state["credits"])
+                self.guess_trigger_sample_counter = 0
 
-                        game_state["credits"] -= WIN_CREDITS
-                        self.show_status_message(
-                            f"Lost (SHA Fail)! All Cams Below ({camera_status_str}). -{COST_PER_GUESS} credits.", 2000)
-
-                    # Log debug info (expanded for 3 cameras)
-                    threshold_strs = [f"Cam{cid}={self.camera_trackers[cid].current_threshold:.2f}" for cid in ALL_CAMERA_IDS]
-                print(f"Guess Cycle: {camera_status_str} | x.txt val: {current_data_file_value_str} (0x{hex_value_from_file:X}), "
-                        f"SHA Base Nonce: {self.init_count}, Checked up to: {self.init_count + iterations_for_sha -1}, "
-                        f"Credits: {game_state['credits']}, Success: {game_state['wins']}, Ready/ready: {game_state['ready']}, Losses: {game_state['losses']}, Coasting: {game_state['coasting']}, "
-                        f"Thresholds: {', '.join(threshold_strs)}")
-                
-            else: # At least one camera is not below threshold
-                self.show_status_message(
-                    f"Lost (Alignment Fail - Not all cams below)! {camera_status_str}. -{COST_PER_GUESS} credits.", 2000)
-                # Log debug info for alignment fail
-                threshold_strs = [f"Cam{cid}={self.camera_trackers[cid].current_threshold:.2f}" for cid in ALL_CAMERA_IDS]
-                #print(f"Guess Cycle (Alignment Fail): {camera_status_str} | x.txt val: {current_data_file_value_str} (0x{hex_value_from_file:X}), "
-                      #f"SHA Base Nonce: {self.init_count}, "
-                      #f"Credits: {game_state['credits']}, Success: {game_state['wins']}, Ready/ready: {game_state['ready']}, "
-                      #f"Thresholds: {', '.join(threshold_strs)}")
-
-        except (ValueError, IndexError) as e:
-            print(f"Error processing data at index {self.data_index} or during guess: {e}")
-            self.show_status_message(f"Data processing error: {str(e)}", 3000)
-        except Exception as e:
-            print(f"An unexpected error occurred in process_all_cameras_guess: {e}")
-            self.show_status_message(f"Unexpected guess error: {str(e)}", 3000)
-        finally:
-            self.data_index = (self.data_index + 1) # % len(data) # Modulo handled by usage: data[self.data_index % len(data)]
-            self.app_state.update_game_state(game_state)
-
-
-    def update_game_stats(self, state_dict):
-        """Update the game statistics display"""
-        self.credits_label.setText(f"Credits: {state_dict['credits']}")
-        self.wins_label.setText(f"Success states: {state_dict.get('wins', 0)}")
-        self.ready_label.setText(f"Ready states: {state_dict.get('ready', 0)}")
-
-    def show_status_message(self, message, timeout=0, camera_id=None):
-        """Show a status message, optionally from a specific camera"""
-        if camera_id is not None:
-            message = f"Camera {camera_id}: {message}"
+    def show_status_message(self, message, timeout=0): 
         self.status_bar.showMessage(message, timeout)
 
-    def on_state_changed_gui(self, camera_id, state):
-        """Handle UI state changes for a specific camera"""
-        tracker = self.camera_trackers.get(camera_id)
-        if tracker:
-            if state == AppState.STATE_WAITING_FOR_REFERENCE:
-                self.show_status_message(f"STATE (Cam {camera_id}): Waiting for Reference. Aim and press 'N'.", 0, camera_id=camera_id)
-                tracker.clear_data()
-            elif state == AppState.STATE_TRACKING:
-                self.show_status_message(f"STATE (Cam {camera_id}): Tracking active. Press 'N' to reset.", 0, camera_id=camera_id)
+    def on_state_changed_gui(self, state):
+        self.guess_trigger_sample_counter = 0 
+        if state == AppState.STATE_WAITING_FOR_REFERENCE:
+            self.show_status_message("STATE: Waiting for Reference. Aim and press 'N'.")
+            self.clear_chart_data()
+        elif state == AppState.STATE_TRACKING:
+            self.show_status_message("STATE: Tracking active. Press 'N' to reset.")
+
+    def clear_chart_data(self):
+        self.raw_match_history.clear()
+        self.avg_match_history.clear()
+        self.time_points.clear()
+        self.current_time_step = 0
+        self.raw_match_data_line.setData([], [])
+        self.avg_match_data_line.setData([], [])
 
     def keyPressEvent(self, event):
         key = event.key()
         if key == KEY_TO_QUIT_QT:
             self.close()
         elif key == KEY_TO_CYCLE_QT:
-            # Request state change for all cameras
-            for cam_id in ALL_CAMERA_IDS: # *** UPDATED to use ALL_CAMERA_IDS ***
-                current_state = self.app_state.get_camera_state(cam_id)
-                if current_state == AppState.STATE_WAITING_FOR_REFERENCE:
-                    self.show_status_message(f"GUI: Requesting reference capture for Camera {cam_id}...", 2000, camera_id=cam_id)
-                    self.app_state.request_capture_reference(cam_id)
-                elif current_state == AppState.STATE_TRACKING:
-                    self.show_status_message(f"GUI: Requesting reset for Camera {cam_id}...", 2000, camera_id=cam_id)
-                    self.app_state.request_reset(cam_id)
+            # Temporary messages for key presses, main state message will be set by on_state_changed_gui
+            if self.app_state.current_state == AppState.STATE_WAITING_FOR_REFERENCE:
+                self.show_status_message("GUI: Requesting reference capture...", 2000) 
+                self.app_state.request_capture_reference()
+            elif self.app_state.current_state == AppState.STATE_TRACKING:
+                self.show_status_message("GUI: Requesting reset...", 2000) 
+                self.app_state.request_reset() 
         else:
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        self.show_status_message("Closing application...", timeout=2000)
-        for thread in self.opencv_threads.values():
-            thread.stop()
+        self.show_status_message("Closing application...")
+        self.opencv_thread.stop()
         event.accept()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    # pg.setConfigOptions(antialias=True) # Removed pyqtgraph config
+    pg.setConfigOptions(antialias=True) 
     main_window = MainWindow(app_state)
     main_window.show()
     sys.exit(app.exec_())
