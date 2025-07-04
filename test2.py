@@ -10,7 +10,7 @@ class FastPurePythonHash:
     @staticmethod
     def fast_hash(data: bytes) -> bytes:
         """Fast hash using minimal SHA-256 operations"""
-        return hashlib.sha256(data).digest()[:16]  # Use only first 16 bytes for speed
+        return hashlib.sha256(data).digest() 
     
     @staticmethod
     def cached_hash(data: bytes, cache: dict) -> bytes:
@@ -443,7 +443,7 @@ def demonstrate_fast_pow_mining():
     test_cases = [
         {"puzzle": b"FastPoW_Test_1", "difficulty": 4},
         {"puzzle": b"FastPoW_Test_2", "difficulty": 8},
-        {"puzzle": b"FastPoW_Test_3", "difficulty": 32}
+        {"puzzle": b"FastPoW_Test_3", "difficulty": 24}
     ]
     
     results = []
@@ -608,4 +608,3 @@ if __name__ == "__main__":
         print(f"📁 Results with hashes saved to 'fast_pow_mining_results.txt'")
     except Exception as e:
         print(f"Error saving results: {e}")
-
