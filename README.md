@@ -1,6 +1,6 @@
 Required: Arduino UNO, 650nm laser, USB camera, enclosure & a Windows 10/11 PC
 
-It is crucial to begin small to become accustomed with how the technology works. 
+It is crucial to begin small to become accustomed with how the technology works, then reconfigure for optimal results. 
 cryptanalysis steps:
 
 Know range of nonce to begin to avoid futile activity, set min max value in game state.
