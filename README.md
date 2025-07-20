@@ -10,7 +10,7 @@ A-1. Gauge the range using the slider.
 
 A-2. Set the new range in game state.
 
-Repeat steps 1 & 2 for scientifc notation reduction of desired target.
+Repeat steps A-1 & A-2 for scientifc notation reduction of desired target.
 
 B-1. Update the hash function to search the new possibility space.
 
