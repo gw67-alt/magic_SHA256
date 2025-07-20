@@ -8,7 +8,7 @@ Know range of nonce to begin to avoid futile activity, set min max value in game
 
 A-1. Gauge the range using the slider.
 
-A-2. Set the new range in game state.
+A-2. Set the new range in game state, slider snapping and output space detection.
 
 Repeat steps A-1 & A-2 for scientifc notation reduction of desired target.
 
