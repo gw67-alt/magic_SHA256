@@ -1,4 +1,4 @@
-Required: Arduino UNO, 650nm laser, USB camera, enclosure & a Windows 10/11 PC
+Required: Arduino UNO, 650nm laser/LED/photonic lattice, USB camera, enclosure & a Windows 10/11 PC
 
 It is crucial to begin small to become accustomed with how the technology works, then reconfigure for optimal results. 
 cryptanalysis steps:
