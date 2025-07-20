@@ -6,9 +6,9 @@ cryptanalysis steps:
 Know range of nonce to begin to avoid futile activity, set min max value in game state.
 
 
-1. Gauge the range using the slider.
-2. Set the new range in game state.
+A-1. Gauge the range using the slider.
+A-2. Set the new range in game state.
 Repeat steps 1 & 2 for scientifc notation reduction of desired target.
-Update the hash function to search the new possibility space.
+B-1. Update the hash function to search the new possibility space.
 
 Since modern computers are slower in comparison to ASICs for the task, it may be useful to reduce the number of cryptanalysis steps by connecting an ASIC.
