@@ -10,11 +10,28 @@ ser = None
 WAIT_TIMEOUT = 5  # seconds
 
 # --- Game Constants ---
+
+
 STARTING_CREDITS = 1000
+
+
 COST_PER_GUESS = 10
 WIN_CREDITS = 150
-WIN_RANGE = 5  # The +/- range for a winning guess
-PREFIX = "00"
+PREFIX = "000000000"
+
+
+# --- Game State Dictionary ---
+
+
+game_state = {
+    "attempts": 0,
+    "min_value": 0,
+    "max_value": 912000000000000000,
+    "max_attempts": 0,
+    "credits": STARTING_CREDITS,
+    "target_number": 0,
+}
+
 def calculate_sha256_with_library(data,nonce):
     """
     Calculates the SHA-256 hash of the given data using Python's hashlib library.
@@ -26,7 +43,7 @@ def calculate_sha256_with_library(data,nonce):
         str: The hexadecimal representation of the SHA-256 hash.
     """
     # Create a SHA-256 hash object
-    for i in range(nonce, nonce+500000): #input space
+    for i in range(game_state["min_value"], game_state["max_value"]): #input space
         dataX = data + str(i)
         # Update the hash object with the data
         sha256_hash = hashlib.sha256()
@@ -35,7 +52,7 @@ def calculate_sha256_with_library(data,nonce):
         hex_digest = sha256_hash.hexdigest()
         if hex_digest.startswith(PREFIX):
             print(dataX, hex_digest)
-            return i-25000,i+25000 #output space detection
+            return i-1000000000,i+1000000000 #output space detection
     return 0,0
 # --- Serial Communication Function ---
 def send_data_to_serial(data_to_send):
@@ -77,7 +94,7 @@ def keyword_guessing_game():
     # Initialize Tkinter window
     root = tk.Tk()
     root.title("Number Guessing Game - Arduino Edition")
-    root.geometry("700x650")
+    root.geometry("1700x650")
     root.resizable(False, False)
     root.configure(bg="#2E2E2E")
 
@@ -94,15 +111,7 @@ def keyword_guessing_game():
     style.configure('Display.TFrame', background='#1A1A1A')
     style.configure('Display.TLabel', background='#1A1A1A', foreground="#FFEB3B", font=('Consolas', 36, 'bold'))
 
-    # --- Game State Dictionary ---
-    game_state = {
-        "attempts": 0,
-        "min_value": 0,
-        "max_value": 1000000,
-        "max_attempts": 0,
-        "credits": STARTING_CREDITS,
-        "target_number": 0,
-    }
+
 
     # --- Game Logic Functions ---
     def check_guess():
@@ -115,7 +124,7 @@ def keyword_guessing_game():
         game_state["attempts"] += 1
         attempts_label.config(text=f"Attempts: {game_state['attempts']}/{game_state['max_attempts']}")
         # Check for a win
-        A,B = calculate_sha256_with_library("GeorgeW",guess)
+        A,B = calculate_sha256_with_library("Quantum_Rig",guess)
         # Check for a win
         if guess >= A and guess <= B:
             game_state["credits"] += WIN_CREDITS
@@ -179,7 +188,7 @@ def keyword_guessing_game():
 
     def update_guess_display(value):
         # Round the raw slider value to the nearest 1000
-        snapped_value = round(float(value) / 10000.0) * 10000
+        snapped_value = round(float(value))
         
         # Update the big display label with the snapped value
         current_guess_display.config(text=f"{int(snapped_value)}")
@@ -216,7 +225,7 @@ def keyword_guessing_game():
     current_guess_display = ttk.Label(display_frame, text="--", style='Display.TLabel', anchor='center')
     current_guess_display.pack(pady=10, fill='x')
 
-    slider = ttk.Scale(root, from_=game_state["min_value"], to=game_state["max_value"], orient=tk.HORIZONTAL, length=400, command=update_guess_display)
+    slider = ttk.Scale(root, from_=game_state["min_value"], to=game_state["max_value"], orient=tk.HORIZONTAL, length=1400, command=update_guess_display)
     slider.pack(pady=15, padx=30)
     slider.config(state=tk.DISABLED)
 
