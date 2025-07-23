@@ -82,7 +82,7 @@ void printSpeedupMetrics() {
   Serial.print(" | QV: ");
   Serial.print(QuantumVolume);
   Serial.print(" | Hashes found : ");
-  Serial.print(hashesFound, 2);
+  Serial.print(hashesFound);
   if (QuantumVolume > 0) {
     Serial.print(" | Ratio: ");
     Serial.print(speedup, 2);
@@ -158,7 +158,7 @@ void loop() {
           Serial.print("    Quantum Volume: ");
           Serial.print(QuantumVolume);
           Serial.print(" | Hashes found : ");
-          Serial.print(hashesFound, 2);
+          Serial.print(hashesFound);
           Serial.print(" | Speedup: ");
           Serial.print(instantSpeedup, 2);
           Serial.println("x");
