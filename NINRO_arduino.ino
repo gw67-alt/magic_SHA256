@@ -1,4 +1,3 @@
-
 // Advanced Curvature Analysis Oscilloscope for Arduino
 // Specialized for signal pattern analysis and sign flip detection
 
@@ -10,7 +9,7 @@
 #define SMOOTHING_WINDOW 7  // Moving average window
 #define STATE_SPACE 999999  // Analysis state space
 
-int analogPins[NUM_CHANNELS] = {A0, A1, A2, A3, A4, A5};
+int analogPins[NUM_CHANNELS] = {A0, A1, A2};
 float channelHistory[NUM_CHANNELS][HISTORY_SIZE];
 float smoothedData[NUM_CHANNELS][HISTORY_SIZE];
 float curvatureData[HISTORY_SIZE];
@@ -20,7 +19,7 @@ int selectedChannel = 0;
 unsigned long analysisCount = 0;
 
 // Phosphor-style display characters for enhanced visualization
-char phosphorChars[] = {' ', '░', '▒', '▓', '█', '▄', '▀', '■'};
+char phosphorChars[] = {};
 
 // Curvature analysis buffers
 float signFlips[HISTORY_SIZE];
@@ -28,7 +27,6 @@ int flipCount = 0;
 
 void setup() {
   Serial.begin(115200);
-  analogReference(DEFAULT);
 
   // Initialize all arrays
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
